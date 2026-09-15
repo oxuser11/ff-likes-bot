@@ -553,9 +553,41 @@ def admin_gen_code(m):
         "max_claims": max_claims,
         "users": []
     }
+        save_db(db)
+
+    bot.reply_to(
+        m,
+        f"✅ *Gift Code Created!*\n\n🎁 Code: `{code_name}`\n💎 Credits: `{credits}`\n👥 Limit: `{max_claims}`",
+        parse_mode='Markdown'
+    )
+
+if __name__ == '__main__':
+    threading.Thread(target=run_web).start()
+    bot.infinity_polling()
+    @bot.message_handler(commands=['gen'])
+def admin_gen_code(m):
+    if m.from_user.id != ADMIN_ID:
+        return
+    p = m.text.split()
+    if len(p) != 4:
+        bot.reply_to(m, "Usage: `/gen <CODE> <CREDITS> <MAX_USERS>`\nExample: `/gen FFLIKE 10 100`", parse_mode='Markdown')
+        return
+
+    code_name = p[1].upper()
+    credits = int(p[2])
+    max_claims = int(p[3])
+
+    if "gift_codes" not in db:
+        db["gift_codes"] = {}
+
+    db["gift_codes"][code_name] = {
+        "credits": credits,
+        "max_claims": max_claims,
+        "users": []
+    }
     save_db(db)
 
-bot.reply_to(
+    bot.reply_to(
         m,
         f"✅ *Gift Code Created!*\n\n🎁 Code: `{code_name}`\n💎 Credits: `{credits}`\n👥 Limit: `{max_claims}`",
         parse_mode='Markdown'
