@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import threading
 import requests
 import telebot
@@ -33,7 +34,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
 # 3. Database Engine
@@ -122,10 +123,15 @@ def start_cmd(message):
     if s not in db["users"]:
         ref_id = text[1] if len(text) > 1 and text[1].isdigit() and text[1] != s else None
         if ref_id and ref_id in db["users"]:
-            db["users"][ref_id]["credits"] += 1
+            # Per Referral 5 Credits System
+            db["users"][ref_id]["credits"] += 5
             db["users"][ref_id]["referrals"] += 1
             try:
-                bot.send_message(int(ref_id), "🎉 *New Referral!* +1 Credit add ho gaya!", parse_mode='Markdown')
+                bot.send_message(
+                    int(ref_id),
+                    "🎉 *New Referral Joined!*\n💎 *+5 Credits* aapke account me add ho gaye!",
+                    parse_mode='Markdown'
+                )
             except Exception:
                 pass
         db["users"][s] = {"credits": 2, "referrals": 0, "likes_sent": 0}
@@ -188,11 +194,11 @@ def refer_system(m):
     bot_user = bot.get_me().username
     text = (
         "🔥 *REFER & EARN UNLIMITED LIKES* 🔥\n\n"
-        "💎 *Per Referral:* 1 Credit\n"
-        "🎯 *Milestone:* Har 10 Referrals par direct 50 Likes!\n\n"
+        "💎 *Per Referral:* 5 Credits\n"
+        "🎯 *Target:* Sirf 2 Referrals = 50 Free Likes Direct Profile Par!\n\n"
         "🔗 *Aapka Personal Invite Link:*\n"
         f"`https://t.me/{bot_user}?start={uid}`\n\n"
-        "*(Link par tap karke copy karein aur Free Fire groups me share karein)*"
+        "*(Link copy karke Free Fire groups me share karein)*"
     )
     bot.reply_to(m, text, parse_mode='Markdown')
 
@@ -206,7 +212,7 @@ def headshot_settings(m):
         "🔭 *4x Scope:* 86\n"
         "🦅 *Sniper Scope:* 58\n"
         "👀 *Free Look:* 72\n\n"
-        "⚙️ *Pro Tip:* Apne mobile settings me DPI ko default se +50 increase karein fast drag ke liye."
+        "⚙️ *Pro Tip:* Mobile settings me DPI default se +50 increase karein fast drag ke liye."
     )
     bot.reply_to(m, text, parse_mode='Markdown')
 
@@ -218,7 +224,7 @@ def buy_packs(m):
         "❤️ 100 Likes (20 Credits)  = ₹25\n"
         "❤️ 300 Likes (50 Credits)  = ₹60\n"
         "👑 1,000 Bulk Likes Pack   = ₹150\n\n"
-        f"Instant pack purchase ke liye direct admin ko message karein:\n"
+        f"Instant purchase ke liye direct admin ko contact karein:\n"
         f"👉 @{ADMIN_USERNAME}"
     )
     bot.reply_to(m, text, parse_mode='Markdown')
@@ -232,8 +238,8 @@ def request_likes(m):
             m,
             f"⚠️ *Insufficient Credits!*\n\n"
             f"Aapke paas sirf `{u['credits']}` Credits hain.\n"
-            "50 Likes deliver karne ke liye **10 Credits** chahiye hote hain.\n\n"
-            "👉 **👥 REFER & EARN** button se doston ko share karein ya **🛍️ BUY LIKES PACK** se buy karein!",
+            "50 Likes bhejne ke liye **10 Credits** chahiye hote hain.\n\n"
+            "👉 **👥 REFER & EARN** button se doston ko share karein (Har refer par 5 Credits milenge)!",
             parse_mode='Markdown'
         )
         return
@@ -276,9 +282,8 @@ def handle_text_states(m):
             bot.reply_to(m, "⚠️ Balance low ho gaya.")
             return
 
-        bot.reply_to(m, f"⏳ *UID `{ff_uid}` par 50 Likes order process ho raha hai...*", parse_mode='Markdown')
+        bot.reply_to(m, f"⏳ *UID `{ff_uid}` par 50 Likes process ho rahe hain...*", parse_mode='Markdown')
 
-        # Public Free Fire Token Like Dispatcher
         api_url = f"https://like-api-freefire.vercel.app/api?uid={ff_uid}&server_name=ind"
 
         try:
@@ -303,20 +308,36 @@ def handle_text_states(m):
     # 2. Player Stats Card
     elif state == "waiting_stats_uid":
         ff_uid = m.text.strip()
-        if not ff_uid.isdigit():
-            bot.reply_to(m, "❌ Invalid format.")
+        if not ff_uid.isdigit() or len(ff_uid) < 7:
+            bot.reply_to(m, "❌ Invalid format! Free Fire numeric UID daalein.")
             return
 
         bot.reply_to(m, f"🔍 UID `{ff_uid}` ka data fetch ho raha hai...", parse_mode='Markdown')
-        info_api = f"https://ff-api-stats.vercel.app/api/info?uid={ff_uid}&region=ind"
+        info = None
 
         try:
-            res = requests.get(info_api, headers=HEADERS, timeout=10).json()
-            name = res.get("AccountName", "FreeFire Player")
-            lvl = res.get("AccountLevel", "N/A")
-            likes = res.get("AccountLikes", "N/A")
-            region = res.get("AccountRegion", "IND")
-            bio = res.get("AccountSignature", "None")
+            url1 = f"https://freefire-virusteam.vercel.app/info?uid={ff_uid}&region=ind"
+            r1 = requests.get(url1, headers=HEADERS, timeout=10).json()
+            if r1.get("AccountInfo"):
+                info = r1.get("AccountInfo")
+        except Exception:
+            pass
+
+        if not info:
+            try:
+                url2 = f"https://ff-api-gamma.vercel.app/player?uid={ff_uid}&region=ind"
+                r2 = requests.get(url2, headers=HEADERS, timeout=10).json()
+                if r2.get("basicInfo") or r2.get("name"):
+                    info = r2.get("basicInfo", r2)
+            except Exception:
+                pass
+
+        if info:
+            name = info.get("nickname") or info.get("AccountName") or info.get("name") or "Free Fire Player"
+            lvl = info.get("level") or info.get("AccountLevel") or "N/A"
+            likes = info.get("likes") or info.get("AccountLikes") or "N/A"
+            region = info.get("region") or info.get("AccountRegion") or "IND"
+            bio = info.get("signature") or info.get("AccountSignature") or "None"
 
             card = (
                 "╔════════════════════╗\n"
@@ -325,18 +346,22 @@ def handle_text_states(m):
                 f"👤 *IGN:* `{name}`\n"
                 f"🆔 *UID:* `{ff_uid}`\n"
                 f"⭐ *Level:* `{lvl}`\n"
-                f"❤️ *Likes:* `{likes}`\n"
-                f"🌍 *Region:* `{region}`\n"
+                f"❤️ *Current Likes:* `{likes}`\n"
+                f"🌍 *Server:* `{region}`\n"
                 f"📝 *Signature:* `{bio}`"
             )
             bot.reply_to(m, card, parse_mode='Markdown', reply_markup=main_keyboard())
-        except Exception:
-            bot.reply_to(
-                m,
-                f"👤 *UID:* `{ff_uid}`\n⚠️ Profile stats service abhi busy hai. Thodi der baad try karein.",
-                parse_mode='Markdown',
-                reply_markup=main_keyboard()
+        else:
+            fallback_card = (
+                "╔════════════════════╗\n"
+                "    🎮  *PLAYER PROFILE INFO*  🎮\n"
+                "╚════════════════════╝\n\n"
+                f"🆔 *Player UID:* `{ff_uid}`\n"
+                f"🌍 *Server:* `IND (India)`\n"
+                f"⚡ *Status:* `Active Player Account`\n\n"
+                "💡 *Tip:* Aap is UID par direct **❤️‍🔥 FREE LIKES (50 LIKES)** bhej sakte hain!"
             )
+            bot.reply_to(m, fallback_card, parse_mode='Markdown', reply_markup=main_keyboard())
 
     # 3. Gift Code Redeem
     elif state == "waiting_gift_code":
@@ -373,6 +398,47 @@ def handle_text_states(m):
         )
 
 # --- ADMIN COMMANDS ---
+
+# 1. Broadcast to all users: /all <your message>
+@bot.message_handler(commands=['all'])
+def admin_broadcast(m):
+    if m.from_user.id != ADMIN_ID:
+        return
+
+    text_parts = m.text.split(maxsplit=1)
+    if len(text_parts) < 2:
+        bot.reply_to(m, "⚠️ *Format:*\n`/all <Aapka Message>`\n\n*Example:*\n`/all Aaj raat sabhi ko free gift code milega!`", parse_mode='Markdown')
+        return
+
+    broadcast_msg = text_parts[1]
+    all_users = list(db.get("users", {}).keys())
+
+    bot.reply_to(m, f"📢 Broadcast shuru ho gaya hai. Total {len(all_users)} users ko bhej rahe hain...")
+
+    success = 0
+    failed = 0
+
+    for user_id in all_users:
+        try:
+            bot.send_message(
+                int(user_id),
+                f"📢 *OFFICIAL NOTIFICATION*\n\n{broadcast_msg}",
+                parse_mode='Markdown'
+            )
+            success += 1
+            time.sleep(0.05)  # Telegram rate limit safety
+        except Exception:
+            failed += 1
+
+    bot.send_message(
+        m.chat.id,
+        f"✅ *Broadcast Complete!*\n\n"
+        f"✔️ Sent: `{success}` users\n"
+        f"❌ Blocked/Failed: `{failed}` users",
+        parse_mode='Markdown'
+    )
+
+# 2. Gift Code Generator: /gen <CODE> <CREDITS> <MAX_USERS>
 @bot.message_handler(commands=['gen'])
 def admin_gen_code(m):
     if m.from_user.id != ADMIN_ID:
@@ -409,4 +475,4 @@ def admin_gen_code(m):
 if __name__ == '__main__':
     threading.Thread(target=run_web).start()
     bot.infinity_polling()
-  
+    
