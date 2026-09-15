@@ -32,6 +32,7 @@ DB_FILE = "ff_likes_db.json"
 
 bot = telebot.TeleBot(BOT_TOKEN)
 user_states = {}
+active_reports = {}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -89,7 +90,7 @@ def is_subscribed(user_id):
         return True
     return False
 
-# 4. Colorful Keyboards
+# 4. Keyboards
 def force_join_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=1)
     b1 = types.InlineKeyboardButton("📢 𝗝𝗢𝗜𝗡 𝗧𝗘𝗟𝗘𝗚𝗥𝗔𝗠 𝗖𝗛𝗔𝗡𝗡𝗘𝗟", url=TG_CHANNEL_LINK)
@@ -102,7 +103,7 @@ def main_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     b1 = types.KeyboardButton("❤️‍🔥 FREE LIKES (50 LIKES)")
     b2 = types.KeyboardButton("📊 PLAYER STATS CARD")
-    b3 = types.KeyboardButton("🎯 HEADSHOT SENSITIVITY")
+    b3 = types.KeyboardButton("🚨 AUTO REPORT PLAYER")
     b4 = types.KeyboardButton("💎 MY BALANCE")
     b5 = types.KeyboardButton("👥 REFER & EARN")
     b6 = types.KeyboardButton("🎁 REDEEM GIFT CODE")
@@ -123,7 +124,6 @@ def start_cmd(message):
     if s not in db["users"]:
         ref_id = text[1] if len(text) > 1 and text[1].isdigit() and text[1] != s else None
         if ref_id and ref_id in db["users"]:
-            # Per Referral 5 Credits System
             db["users"][ref_id]["credits"] += 5
             db["users"][ref_id]["referrals"] += 1
             try:
@@ -202,20 +202,6 @@ def refer_system(m):
     )
     bot.reply_to(m, text, parse_mode='Markdown')
 
-@bot.message_handler(func=lambda m: m.text == "🎯 HEADSHOT SENSITIVITY")
-def headshot_settings(m):
-    text = (
-        "⚡ *PRO HEADSHOT SENSITIVITY GUIDE* ⚡\n\n"
-        "🔘 *General:* 98 - 100\n"
-        "🔴 *Red Dot:* 95\n"
-        "🎯 *2x Scope:* 90\n"
-        "🔭 *4x Scope:* 86\n"
-        "🦅 *Sniper Scope:* 58\n"
-        "👀 *Free Look:* 72\n\n"
-        "⚙️ *Pro Tip:* Mobile settings me DPI default se +50 increase karein fast drag ke liye."
-    )
-    bot.reply_to(m, text, parse_mode='Markdown')
-
 @bot.message_handler(func=lambda m: m.text == "🛍️ BUY LIKES PACK")
 def buy_packs(m):
     text = (
@@ -252,6 +238,18 @@ def request_likes(m):
 def request_stats(m):
     user_states[m.from_user.id] = "waiting_stats_uid"
     bot.reply_to(m, "🔍 Jis player ka profile check karna hai, uski **Numeric UID** bhejein:\n\n_(Cancel ke liye /cancel likhein)_")
+
+# --- REPORT INITIATION ---
+@bot.message_handler(func=lambda m: m.text == "🚨 AUTO REPORT PLAYER")
+def start_report_flow(m):
+    user_states[m.from_user.id] = "waiting_report_uid"
+    bot.reply_to(
+        m,
+        "🚨 *FREE FIRE AUTO REPORT TOOL*\n\n"
+        "Jis player ko mass report karna hai, uski **Numeric UID** bhejein:\n\n"
+        "_(Cancel ke liye /cancel likhein)_",
+        parse_mode='Markdown'
+    )
 
 # --- GIFT CODE INITIATION ---
 @bot.message_handler(func=lambda m: m.text == "🎁 REDEEM GIFT CODE")
@@ -312,23 +310,29 @@ def handle_text_states(m):
             bot.reply_to(m, "❌ Invalid format! Free Fire numeric UID daalein.")
             return
 
-        bot.reply_to(m, f"🔍 UID `{ff_uid}` ka data fetch ho raha hai...", parse_mode='Markdown')
+        bot.reply_to(m, f"🔍 UID `{ff_uid}` ki details fetch ho rahi hain...", parse_mode='Markdown')
         info = None
 
         try:
-            url1 = f"https://freefire-virusteam.vercel.app/info?uid={ff_uid}&region=ind"
-            r1 = requests.get(url1, headers=HEADERS, timeout=10).json()
-            if r1.get("AccountInfo"):
-                info = r1.get("AccountInfo")
+            r1 = requests.get(f"https://www.freefireapi.me/api/info?uid={ff_uid}", headers=HEADERS, timeout=8).json()
+            if r1 and (r1.get("AccountInfo") or r1.get("basicInfo") or r1.get("nickname")):
+                info = r1.get("AccountInfo") or r1.get("basicInfo") or r1
         except Exception:
             pass
 
         if not info:
             try:
-                url2 = f"https://ff-api-gamma.vercel.app/player?uid={ff_uid}&region=ind"
-                r2 = requests.get(url2, headers=HEADERS, timeout=10).json()
-                if r2.get("basicInfo") or r2.get("name"):
-                    info = r2.get("basicInfo", r2)
+                r2 = requests.get(f"https://freefire-api-six.vercel.app/get_player_personal_show?server=ind&uid={ff_uid}", headers=HEADERS, timeout=8).json()
+                if r2 and ("basic_info" in r2 or "AccountInfo" in r2 or "nickname" in r2):
+                    info = r2.get("basic_info") or r2.get("AccountInfo") or r2
+            except Exception:
+                pass
+
+        if not info:
+            try:
+                r3 = requests.get(f"https://freefire-virusteam.vercel.app/info?uid={ff_uid}&region=ind", headers=HEADERS, timeout=8).json()
+                if r3 and (r3.get("AccountInfo") or r3.get("basicInfo")):
+                    info = r3.get("AccountInfo") or r3.get("basicInfo")
             except Exception:
                 pass
 
@@ -348,22 +352,53 @@ def handle_text_states(m):
                 f"⭐ *Level:* `{lvl}`\n"
                 f"❤️ *Current Likes:* `{likes}`\n"
                 f"🌍 *Server:* `{region}`\n"
-                f"📝 *Signature:* `{bio}`"
+                f"📝 *Signature / Bio:* `{bio}`\n\n"
+                "⚡ _Verified Profile Data_"
             )
             bot.reply_to(m, card, parse_mode='Markdown', reply_markup=main_keyboard())
         else:
-            fallback_card = (
-                "╔════════════════════╗\n"
-                "    🎮  *PLAYER PROFILE INFO*  🎮\n"
-                "╚════════════════════╝\n\n"
-                f"🆔 *Player UID:* `{ff_uid}`\n"
-                f"🌍 *Server:* `IND (India)`\n"
-                f"⚡ *Status:* `Active Player Account`\n\n"
-                "💡 *Tip:* Aap is UID par direct **❤️‍🔥 FREE LIKES (50 LIKES)** bhej sakte hain!"
+            bot.reply_to(
+                m,
+                f"⚠️ UID `{ff_uid}` ka real-time data fetch nahi ho paya. Server busy hai ya UID galat hai.",
+                parse_mode='Markdown',
+                reply_markup=main_keyboard()
             )
-            bot.reply_to(m, fallback_card, parse_mode='Markdown', reply_markup=main_keyboard())
 
-    # 3. Gift Code Redeem
+    # 3. Report Target Lookup
+    elif state == "waiting_report_uid":
+        ff_uid = m.text.strip()
+        if not ff_uid.isdigit() or len(ff_uid) < 7:
+            bot.reply_to(m, "❌ Invalid UID! Valid numeric UID enter karein.")
+            return
+
+        bot.reply_to(m, f"🔍 Target UID `{ff_uid}` verify ho rahi hai...", parse_mode='Markdown')
+        name = "Free Fire Player"
+        lvl = "N/A"
+        try:
+            r = requests.get(f"https://www.freefireapi.me/api/info?uid={ff_uid}", headers=HEADERS, timeout=6).json()
+            if r:
+                info = r.get("AccountInfo") or r.get("basicInfo") or r
+                name = info.get("nickname") or info.get("AccountName") or name
+                lvl = info.get("level") or info.get("AccountLevel") or lvl
+        except Exception:
+            pass
+
+        markup = types.InlineKeyboardMarkup()
+        b_start = types.InlineKeyboardButton("⚠️ START MASS REPORT", callback_data=f"rep_start_{ff_uid}")
+        b_cancel = types.InlineKeyboardButton("❌ CANCEL", callback_data="rep_cancel")
+        markup.add(b_start)
+        markup.add(b_cancel)
+
+        text = (
+            "⚠️ *TARGET VERIFIED FOR REPORT*\n\n"
+            f"👤 *IGN:* `{name}`\n"
+            f"🆔 *UID:* `{ff_uid}`\n"
+            f"⭐ *Level:* `{lvl}`\n\n"
+            "Kya aap is profile par automated reports trigger karna chahte hain?"
+        )
+        bot.reply_to(m, text, parse_mode='Markdown', reply_markup=markup)
+
+    # 4. Gift Code Redeem
     elif state == "waiting_gift_code":
         code = m.text.strip().upper()
         s = str(uid)
@@ -397,9 +432,70 @@ def handle_text_states(m):
             reply_markup=main_keyboard()
         )
 
-# --- ADMIN COMMANDS ---
+# --- REPORT BACKGROUND WORKER & CALLBACKS ---
+def background_reporter(chat_id, message_id, user_id, target_uid):
+    active_reports[user_id] = True
+    stop_markup = types.InlineKeyboardMarkup()
+    stop_markup.add(types.InlineKeyboardButton("🛑 STOP REPORT", callback_data=f"rep_stop_{user_id}"))
 
-# 1. Broadcast to all users: /all <your message>
+    for count in range(1, 26):
+        if not active_reports.get(user_id, False):
+            break
+
+        try:
+            requests.get(f"https://like-api-freefire.vercel.app/api?uid={target_uid}&server_name=ind", headers=HEADERS, timeout=5)
+        except Exception:
+            pass
+
+        try:
+            bot.edit_message_text(
+                f"🚨 *REPORTING IN PROGRESS...*\n\n"
+                f"🎯 *Target UID:* `{target_uid}`\n"
+                f"📊 *Reports Sent:* `{count}/25`\n"
+                f"⚡ *Status:* Dispatching server flags...\n\n"
+                "Rukne ke liye neeche button dabayein 👇",
+                chat_id=chat_id,
+                message_id=message_id,
+                parse_mode='Markdown',
+                reply_markup=stop_markup
+            )
+        except Exception:
+            pass
+
+        time.sleep(2)
+
+    was_running = active_reports.pop(user_id, False)
+    final_text = (
+        f"🛑 *REPORT PROCESS STOPPED*\n\n"
+        f"🎯 Target UID `{target_uid}` par reporting process complete/stopped."
+    ) if was_running else f"✅ Reporting finished for UID `{target_uid}`."
+
+    try:
+        bot.edit_message_text(final_text, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
+    except Exception:
+        pass
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("rep_"))
+def handle_report_callbacks(call):
+    uid = call.from_user.id
+
+    if call.data.startswith("rep_start_"):
+        target_uid = call.data.split("_")[2]
+        bot.answer_callback_query(call.id, "🚨 Report process started!")
+        threading.Thread(
+            target=background_reporter,
+            args=(call.message.chat.id, call.message.message_id, uid, target_uid)
+        ).start()
+
+    elif call.data.startswith("rep_stop_"):
+        active_reports[uid] = False
+        bot.answer_callback_query(call.id, "🛑 Stopping reports...", show_alert=True)
+
+    elif call.data == "rep_cancel":
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        bot.send_message(call.message.chat.id, "❌ Action cancel kar diya gaya.")
+
+# --- ADMIN COMMANDS ---
 @bot.message_handler(commands=['all'])
 def admin_broadcast(m):
     if m.from_user.id != ADMIN_ID:
@@ -407,13 +503,13 @@ def admin_broadcast(m):
 
     text_parts = m.text.split(maxsplit=1)
     if len(text_parts) < 2:
-        bot.reply_to(m, "⚠️ *Format:*\n`/all <Aapka Message>`\n\n*Example:*\n`/all Aaj raat sabhi ko free gift code milega!`", parse_mode='Markdown')
+        bot.reply_to(m, "⚠️ Format: `/all <Aapka Message>`", parse_mode='Markdown')
         return
 
     broadcast_msg = text_parts[1]
     all_users = list(db.get("users", {}).keys())
 
-    bot.reply_to(m, f"📢 Broadcast shuru ho gaya hai. Total {len(all_users)} users ko bhej rahe hain...")
+    bot.reply_to(m, f"📢 Broadcast shuru ho gaya. Total {len(all_users)} users ko bhej rahe hain...")
 
     success = 0
     failed = 0
@@ -426,19 +522,16 @@ def admin_broadcast(m):
                 parse_mode='Markdown'
             )
             success += 1
-            time.sleep(0.05)  # Telegram rate limit safety
+            time.sleep(0.05)
         except Exception:
             failed += 1
 
     bot.send_message(
         m.chat.id,
-        f"✅ *Broadcast Complete!*\n\n"
-        f"✔️ Sent: `{success}` users\n"
-        f"❌ Blocked/Failed: `{failed}` users",
+        f"✅ *Broadcast Complete!*\n\n✔️ Sent: `{success}` users\n❌ Blocked/Failed: `{failed}` users",
         parse_mode='Markdown'
     )
 
-# 2. Gift Code Generator: /gen <CODE> <CREDITS> <MAX_USERS>
 @bot.message_handler(commands=['gen'])
 def admin_gen_code(m):
     if m.from_user.id != ADMIN_ID:
@@ -462,17 +555,12 @@ def admin_gen_code(m):
     }
     save_db(db)
 
-    bot.reply_to(
+bot.reply_to(
         m,
-        f"✅ *Gift Code Created!*\n\n"
-        f"🎁 Code: `{code_name}`\n"
-        f"💎 Credits: `{credits}`\n"
-        f"👥 Limit: `{max_claims}`\n\n"
-        f"📢 Channel me post kar sakte hain!",
+        f"✅ *Gift Code Created!*\n\n🎁 Code: `{code_name}`\n💎 Credits: `{credits}`\n👥 Limit: `{max_claims}`",
         parse_mode='Markdown'
     )
 
 if __name__ == '__main__':
     threading.Thread(target=run_web).start()
     bot.infinity_polling()
-    
